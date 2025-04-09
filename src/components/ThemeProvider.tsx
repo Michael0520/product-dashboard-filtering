@@ -20,6 +20,21 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
+const applyThemeClass = (theme: string) => {
+    const root = window.document.documentElement
+    const isDark = theme === "dark" || 
+        (theme === "system" && 
+         window.matchMedia("(prefers-color-scheme: dark)").matches)
+    
+    if (isDark) {
+        root.classList.add("dark")
+        root.classList.remove("light")
+    } else {
+        root.classList.add("light")
+        root.classList.remove("dark")
+    }
+}
+
 export function ThemeProvider({
     children,
     defaultTheme = "system",
@@ -31,21 +46,17 @@ export function ThemeProvider({
     )
 
     useEffect(() => {
-        const root = window.document.documentElement
-
-        root.classList.remove("light", "dark")
-
-        if (theme === "system") {
-            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-                .matches
-                ? "dark"
-                : "light"
-
-            root.classList.add(systemTheme)
-            return
+        applyThemeClass(theme)
+        
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+        const handleChange = () => {
+            if (theme === "system") {
+                applyThemeClass("system")
+            }
         }
-
-        root.classList.add(theme)
+        
+        mediaQuery.addEventListener("change", handleChange)
+        return () => mediaQuery.removeEventListener("change", handleChange)
     }, [theme])
 
     const value = {
