@@ -1,12 +1,10 @@
-import React,{ useState } from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
 import { Card } from "../components/ui/card";
 import {
   Table,
-  TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -22,6 +20,7 @@ import {
 import { Product, fetchProducts, fetchCategories } from "../api/productApi";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const ProductList = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -30,6 +29,10 @@ const ProductList = () => {
   const [maxPrice, setMaxPrice] = useState("");
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc" | null>(null);
+  
+  // References for virtualizer containers
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const mobileContainerRef = useRef<HTMLDivElement>(null);
 
   const productsQuery = useQuery({
     queryKey: ["products"],
@@ -117,13 +120,29 @@ const ProductList = () => {
     filteredProducts = filterProducts(productsQuery.data.data);
   }
 
+  // Table virtualizer for desktop view
+  const tableVirtualizer = useVirtualizer({
+    count: filteredProducts.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 52,
+    overscan: 10, // pre render 10 items
+  });
+
+  // Mobile virtualizer 
+  const mobileVirtualizer = useVirtualizer({
+    count: filteredProducts.length, 
+    getScrollElement: () => mobileContainerRef.current,
+    estimateSize: () => 140,
+    overscan: 5, // pre render 5 items
+  });
+  
   if (productsQuery.isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold">商品列表</h1>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, index) => (
             <Card key={index} className="p-4">
               <Skeleton className="h-6 w-3/4 mb-2" />
@@ -252,7 +271,7 @@ const ProductList = () => {
         <div className="md:col-span-3">
           {productsQuery.isLoading ? (
             // Loading State
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Card key={i} className="p-4">
                   <Skeleton className="h-[200px] mb-4" />
@@ -279,9 +298,12 @@ const ProductList = () => {
               </div>
 
               {/* Desktop View: Table Display */}
-              <div className="hidden md:block overflow-hidden rounded-lg">
+              <div
+                ref={tableContainerRef}
+                className="hidden md:block overflow-auto rounded-lg h-[80dvh] border"
+              >
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-white dark:bg-gray-950 z-10">
                     <TableRow>
                       <TableHead>商品名稱</TableHead>
                       <TableHead>分類</TableHead>
@@ -289,46 +311,95 @@ const ProductList = () => {
                       <TableHead>庫存</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {filteredProducts.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell>{product.name}</TableCell>
-                        <TableCell>{product.category}</TableCell>
-                        <TableCell>{product.price}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              product.inStock ? "default" : "destructive"
-                            }
-                          >
-                            {product.inStock ? "有庫存" : "無庫存"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
                 </Table>
+                
+                {filteredProducts.length === 0 ? (
+                  <div className="flex justify-center items-center h-20">
+                    <p className="text-gray-500">無符合條件的商品</p>
+                  </div>
+                ) : (
+                  <div 
+                    className="relative"
+                    style={{ height: `${tableVirtualizer.getTotalSize()}px` }}
+                  >
+                    {tableVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const product = filteredProducts[virtualRow.index];
+                      if (!product) return null;
+                      
+                      return (
+                        <div
+                          key={product.id}
+                          className="absolute top-0 left-0 w-full flex border-b border-gray-200 dark:border-gray-800"
+                          style={{
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <div className="flex-1 p-3">{product.name}</div>
+                          <div className="flex-1 p-3">{product.category}</div>
+                          <div className="flex-1 p-3">{product.price}</div>
+                          <div className="flex-1 p-3">
+                            <Badge
+                              variant={
+                                product.inStock ? "default" : "destructive"
+                              }
+                            >
+                              {product.inStock ? "有庫存" : "無庫存"}
+                            </Badge>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Mobile View: Card Display */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
-                {filteredProducts.map((product) => (
-                  <Card key={product.id} className="p-4">
-                    <h3 className="font-semibold mb-2">{product.name}</h3>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-gray-600">分類：{product.category}</p>
-                      <p className="text-gray-600">價錢：{product.price}</p>
-                      <div className="text-gray-600 flex items-center gap-2 mt-2">
-                        狀態：
-                        <Badge
-                          variant={product.inStock ? "default" : "destructive"}
+              <div 
+                ref={mobileContainerRef}
+                className="block md:hidden overflow-auto h-[80dvh]" 
+              >
+                {filteredProducts.length === 0 ? (
+                  <div className="flex justify-center items-center h-20">
+                    <p className="text-gray-500">無符合條件的商品</p>
+                  </div>
+                ) : (
+                  <div 
+                    className="relative" 
+                    style={{ height: `${mobileVirtualizer.getTotalSize()}px` }}
+                  >
+                    {mobileVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const product = filteredProducts[virtualRow.index];
+                      if (!product) return null;
+                      
+                      return (
+                        <Card
+                          key={product.id}
+                          className="absolute p-4 w-[calc(100%-8px)]"
+                          style={{
+                            transform: `translateY(${virtualRow.start}px)`,
+                            height: `${virtualRow.size}px`,
+                          }}
                         >
-                          {product.inStock ? "有庫存" : "無庫存"}
-                        </Badge>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+                          <h3 className="font-semibold mb-2 truncate">{product.name}</h3>
+                          <div className="space-y-1 text-sm">
+                            <p className="text-gray-600 dark:text-gray-300">分類：{product.category}</p>
+                            <p className="text-gray-600 dark:text-gray-300">價錢：{product.price}</p>
+                            <div className="text-gray-600 dark:text-gray-300 flex items-center gap-1 mt-1">
+                              狀態：
+                              <Badge
+                                variant={product.inStock ? "default" : "destructive"}
+                                className="text-xs"
+                              >
+                                {product.inStock ? "有庫存" : "無庫存"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </>
           )}
