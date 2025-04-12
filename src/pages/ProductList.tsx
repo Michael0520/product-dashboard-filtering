@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
@@ -17,126 +17,54 @@ import {
   SelectContent,
   SelectItem,
 } from "../components/ui/select";
-import { Product, fetchProducts, fetchCategories } from "../api/productApi";
-import { useQuery } from "@tanstack/react-query";
 import { Badge } from "../components/ui/badge";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useProductList } from "../hooks/useProductList";
 
 const ProductList = () => {
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [onlyInStock, setOnlyInStock] = useState(false);
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc" | null>(null);
-  
-  // References for virtualizer containers
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const mobileContainerRef = useRef<HTMLDivElement>(null);
 
-  const productsQuery = useQuery({
-    queryKey: ["products"],
-    queryFn: fetchProducts,
-  });
-
-  const categoriesQuery = useQuery({
-    queryKey: ["categories"],
-    queryFn: fetchCategories,
-  });
-
-  const filterProducts = (products: Product[]) => {
-    let filtered = [...products];
-
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((product) =>
-        selectedCategories.includes(product.category)
-      );
-    }
-
-    if (searchTerm) {
-      const keyword = searchTerm.toLowerCase();
-      filtered = filtered.filter((product) =>
-        product.name.toLowerCase().includes(keyword)
-      );
-    }
-
-    if (minPrice) {
-      const min = parseFloat(minPrice);
-      if (!isNaN(min)) {
-        filtered = filtered.filter((product) => product.price >= min);
-      }
-    }
-
-    if (maxPrice) {
-      const max = parseFloat(maxPrice);
-      if (!isNaN(max)) {
-        filtered = filtered.filter((product) => product.price <= max);
-      }
-    }
-
-    if (onlyInStock) {
-      filtered = filtered.filter((product) => product.inStock);
-    }
-
-    if (sortOrder === "asc") {
-      filtered.sort((a, b) => a.price - b.price);
-    } else if (sortOrder === "desc") {
-      filtered.sort((a, b) => b.price - a.price);
-    }
-
-    return filtered;
-  };
+  const {
+    products: filteredProducts,
+    categories,
+    isLoading,
+    isError,
+    refresh,
+    filterState,
+    toggleCategory,
+    handleSearchChange,
+    setPriceRange,
+    handleStockChange,
+    handleSortChange,
+    resetFilters,
+  } = useProductList();
 
   const handleCategoryChange = (category: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(category)) {
-        return prev.filter((c) => c !== category);
-      } else {
-        return [...prev, category];
-      }
-    });
+    toggleCategory(category);
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
+    handleSearchChange(e.target.value);
   };
 
-  const handleSortChange = (value: string) => {
-    setSortOrder(value as "asc" | "desc" | null);
+  const handleMinPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPriceRange(e.target.value, filterState.priceRange.max);
   };
 
-  const resetFilters = () => {
-    setSelectedCategories([]);
-    setSearchTerm("");
-    setMinPrice("");
-    setMaxPrice("");
-    setOnlyInStock(false);
-    setSortOrder(null);
+  const handleMaxPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPriceRange(filterState.priceRange.min, e.target.value);
   };
 
-  let filteredProducts: Product[] = [];
-
-  if (productsQuery.data) {
-    filteredProducts = filterProducts(productsQuery.data.data);
-  }
-
-  // Table virtualizer for desktop view
   const tableVirtualizer = useVirtualizer({
     count: filteredProducts.length,
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => 52,
-    overscan: 10, // pre render 10 items
+    overscan: 10,
   });
 
-  // Mobile virtualizer 
-  const mobileVirtualizer = useVirtualizer({
-    count: filteredProducts.length, 
-    getScrollElement: () => mobileContainerRef.current,
-    estimateSize: () => 140,
-    overscan: 5, // pre render 5 items
-  });
-  
-  if (productsQuery.isLoading) {
+  // Loading state
+  if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
@@ -160,25 +88,31 @@ const ProductList = () => {
   return (
     <div className="container mx-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">商品列表</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">
+          商品列表
+        </h1>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          商品總數: {filteredProducts.length} 件
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        {/* Filter sidebar */}
         <div className="space-y-4">
           <h2 className="font-semibold">篩選條件</h2>
 
           {/* Category Filter */}
           <div>
             <h3 className="text-sm mb-2">分類</h3>
-            {categoriesQuery.isLoading ? (
+            {isLoading ? (
               <Skeleton className="h-[100px]" />
             ) : (
               <div className="space-y-1">
-                {categoriesQuery.data?.map((category) => (
+                {categories.map((category) => (
                   <div key={category} className="flex items-center">
                     <Checkbox
                       id={`category-${category}`}
-                      checked={selectedCategories.includes(category)}
+                      checked={filterState.categories.includes(category)}
                       onCheckedChange={() => handleCategoryChange(category)}
                     />
                     <label
@@ -193,37 +127,33 @@ const ProductList = () => {
             )}
           </div>
 
-          {/* Keyword Search */}
+          {/* Search */}
           <div>
-            <h3 className="text-sm mb-2">Search</h3>
+            <h3 className="text-sm mb-2">搜尋</h3>
             <Input
               type="text"
               placeholder="商品名稱"
-              value={searchTerm}
+              value={filterState.searchTerm}
               onChange={handleSearch}
             />
           </div>
 
           {/* Price Range */}
           <div>
-            <h3 className="text-sm mb-2">Price Range</h3>
+            <h3 className="text-sm mb-2">價格範圍</h3>
             <div className="flex space-x-2">
               <Input
                 type="number"
                 placeholder="最低價"
-                value={minPrice}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setMinPrice(e.target.value);
-                }}
+                value={filterState.priceRange.min}
+                onChange={handleMinPriceChange}
                 className="w-1/2"
               />
               <Input
                 type="number"
                 placeholder="最高價"
-                value={maxPrice}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setMaxPrice(e.target.value);
-                }}
+                value={filterState.priceRange.max}
+                onChange={handleMaxPriceChange}
                 className="w-1/2"
               />
             </div>
@@ -233,10 +163,8 @@ const ProductList = () => {
           <div className="flex items-center">
             <Checkbox
               id="stock-filter"
-              checked={onlyInStock}
-              onCheckedChange={(checked: boolean) => {
-                setOnlyInStock(checked);
-              }}
+              checked={filterState.onlyInStock}
+              onCheckedChange={(checked: boolean) => handleStockChange(checked)}
             />
             <label htmlFor="stock-filter" className="ml-2 text-sm">
               只顯示有庫存
@@ -247,7 +175,13 @@ const ProductList = () => {
           <div>
             <h3 className="text-sm mb-2">排序方式</h3>
             <Select
-              value={sortOrder || "default"}
+              value={
+                !filterState.sort.field
+                  ? "default"
+                  : filterState.sort.order === "asc"
+                  ? "asc"
+                  : "desc"
+              }
               onValueChange={handleSortChange}
             >
               <SelectTrigger className="w-full">
@@ -261,7 +195,7 @@ const ProductList = () => {
             </Select>
           </div>
 
-          {/* Reset Filters */}
+          {/* Reset */}
           <Button onClick={resetFilters} variant="outline" className="w-full">
             重置篩選
           </Button>
@@ -269,7 +203,7 @@ const ProductList = () => {
 
         {/* Product List Area */}
         <div className="md:col-span-3">
-          {productsQuery.isLoading ? (
+          {isLoading ? (
             // Loading State
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -280,24 +214,23 @@ const ProductList = () => {
                 </Card>
               ))}
             </div>
-          ) : productsQuery.isError ? (
+          ) : isError ? (
             // Error State
             <div className="text-center p-8">
               <p className="text-red-500">載入數據時發生錯誤</p>
-              <Button onClick={() => productsQuery.refetch()} className="mt-4">
+              <Button onClick={() => refresh()} className="mt-4">
                 重試
               </Button>
             </div>
           ) : (
-            // Data Length Display
             <>
               <div className="mb-4 flex justify-between items-center">
                 <p className="text-sm text-gray-500">
-                  共 {filteredProducts.length} 件商品
+                  篩選結果: {filteredProducts.length} 件商品
                 </p>
               </div>
 
-              {/* Desktop View: Table Display */}
+              {/* Desktop View: Table */}
               <div
                 ref={tableContainerRef}
                 className="hidden md:block overflow-auto rounded-lg h-[80dvh] border"
@@ -312,20 +245,20 @@ const ProductList = () => {
                     </TableRow>
                   </TableHeader>
                 </Table>
-                
+
                 {filteredProducts.length === 0 ? (
                   <div className="flex justify-center items-center h-20">
                     <p className="text-gray-500">無符合條件的商品</p>
                   </div>
                 ) : (
-                  <div 
+                  <div
                     className="relative"
                     style={{ height: `${tableVirtualizer.getTotalSize()}px` }}
                   >
                     {tableVirtualizer.getVirtualItems().map((virtualRow) => {
                       const product = filteredProducts[virtualRow.index];
                       if (!product) return null;
-                      
+
                       return (
                         <div
                           key={product.id}
@@ -354,50 +287,43 @@ const ProductList = () => {
                 )}
               </div>
 
-              {/* Mobile View: Card Display */}
-              <div 
+              {/* Mobile View: Cards */}
+              <div
                 ref={mobileContainerRef}
-                className="block md:hidden overflow-auto h-[80dvh]" 
+                className="block md:hidden overflow-auto h-[80dvh]"
               >
                 {filteredProducts.length === 0 ? (
                   <div className="flex justify-center items-center h-20">
                     <p className="text-gray-500">無符合條件的商品</p>
                   </div>
                 ) : (
-                  <div 
-                    className="relative" 
-                    style={{ height: `${mobileVirtualizer.getTotalSize()}px` }}
-                  >
-                    {mobileVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const product = filteredProducts[virtualRow.index];
-                      if (!product) return null;
-                      
-                      return (
-                        <Card
-                          key={product.id}
-                          className="absolute p-4 w-[calc(100%-8px)]"
-                          style={{
-                            transform: `translateY(${virtualRow.start}px)`,
-                            height: `${virtualRow.size}px`,
-                          }}
-                        >
-                          <h3 className="font-semibold mb-2 truncate">{product.name}</h3>
-                          <div className="space-y-1 text-sm">
-                            <p className="text-gray-600 dark:text-gray-300">分類：{product.category}</p>
-                            <p className="text-gray-600 dark:text-gray-300">價錢：{product.price}</p>
-                            <div className="text-gray-600 dark:text-gray-300 flex items-center gap-1 mt-1">
-                              狀態：
-                              <Badge
-                                variant={product.inStock ? "default" : "destructive"}
-                                className="text-xs"
-                              >
-                                {product.inStock ? "有庫存" : "無庫存"}
-                              </Badge>
-                            </div>
+                  <div className="grid grid-cols-2 gap-4 relative">
+                    {filteredProducts.map((product) => (
+                      <Card key={product.id} className="p-4">
+                        <h3 className="font-semibold mb-2 truncate">
+                          {product.name}
+                        </h3>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-gray-600 dark:text-gray-300">
+                            分類：{product.category}
+                          </p>
+                          <p className="text-gray-600 dark:text-gray-300">
+                            價錢：{product.price}
+                          </p>
+                          <div className="text-gray-600 dark:text-gray-300 flex items-center gap-1 mt-1">
+                            狀態：
+                            <Badge
+                              variant={
+                                product.inStock ? "default" : "destructive"
+                              }
+                              className="text-xs"
+                            >
+                              {product.inStock ? "有庫存" : "無庫存"}
+                            </Badge>
                           </div>
-                        </Card>
-                      );
-                    })}
+                        </div>
+                      </Card>
+                    ))}
                   </div>
                 )}
               </div>
